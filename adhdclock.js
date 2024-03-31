@@ -1,76 +1,109 @@
 "use strict";
 let cnv;
-let boxWidth = 150;
-let boxHeight = 250;
-let segmentShortDim = 12;
-let segmentLongDim = 80;
-let margin = { top: 27, right: 10, bottom: 27, left: 10 };
-let gap = 2;
-let triHeight = segmentShortDim / 2;
-
-let inputTime = 0;
-let remainingTime = inputTime;
-
-let numSegments = 5;
-let timeWorked = 0;
-
-function TimerBlock(blockDuration = 3600, blockType = TimerTypes.WorkTimer) {
-	this.blockDuration = blockDuration;
-	this.blockType = blockType;
-}
-
-let timerBlocks = [];
-let currentBlock;
-
-function Pomodoro() {
-	timerBlocks.push(new TimerBlock(25 * 60, "Work"));
-	timerBlocks.push(new TimerBlock(5 * 60, "Break"));
-
-	timerBlocks.push(new TimerBlock(25 * 60, "Work"));
-	timerBlocks.push(new TimerBlock(5 * 60, "Break"));
-
-	timerBlocks.push(new TimerBlock(25 * 60, "Work"));
-	timerBlocks.push(new TimerBlock(5 * 60, "Break"));
-
-	timerBlocks.push(new TimerBlock(25 * 60, "Work"));
-	timerBlocks.push(new TimerBlock(5 * 60, "Break"));
-
-	timerBlocks.push(new TimerBlock(30 * 60, "Break"));
-}
 
 class Status {
 	static NotStarted = "NotStarted";
 	static Running = "Running";
 	static Paused = "Paused";
 	static Expired = "Expired";
-}
+}//Status
 
 class TimerColors {
 	static Work = "#ffef33";
 	static Expired = "#FF5500";
 	static Break = "#58ff33";
-	static Off = "#454545";
-}
+	static Off = "#282828"//"#454545";
+}//TimerColors
 
 class TimerTypes {
 	static WorkTimer = "Work";
 	static BreakTimer = "Break";
-}
+}//TimerTypes
 
+class TimerBlock {
+	constructor(blockDuration = 3600, blockType = TimerTypes.WorkTimer){
+		this.blockDuration = blockDuration;
+		this.blockType = blockType;
+	}
+}//TimerBlock
+
+const boxWidth = 150;
+const boxHeight = 250;
+const segmentLongDim = 80; //80
+const segmentShortDim = 12; //12
+const triHeight = segmentShortDim / 2; // 2
+const gap = 2; //2
+const numSegments = 5;
 let onColor = TimerColors.Work;
 
-let status = Status.NotStarted;
-let currentTimerType = TimerTypes.WorkTimer;
+let remainingTime = 0;
+let timerBlocks = [];
+let timeWorked = 0;
 
 let timer;
 let expiredTimer;
 
-let digitCodes = [0x7e, 0x30, 0x6d, 0x79, 0x33, 0x5b, 0x5f, 0x70, 0x7f, 0x7b];
+let status = Status.NotStarted;
+let currentTimerType = TimerTypes.WorkTimer;
+let currentBlock;
+
+//				| bitmasks for each numeral's required segments
+//    A   | 1's & capitals indicates a lit segment:
+//	 F B  |	0x7e = 1111110 = ABCDEFg | 0x33 = 0110011 = aBCdeFG
+//    G   |													 |
+//	 E C  |						|‾|						 |			 | |
+//		D		|						| |						 |				‾|
+//				|	 					 ‾					 	 |
+const litSegmentMask = [0x7e, 0x30, 0x6d, 0x79, 0x33, 0x5b, 0x5f, 0x70, 0x7f, 0x7b];
+
+const segmentData = {
+	vertices: [
+		{
+			x: 0,
+			y: 0,
+		},
+		{
+			x: triHeight,
+			y: -triHeight,
+		},
+		{
+			x: triHeight + segmentLongDim,
+			y: -triHeight,
+		},
+		{
+			x: triHeight + segmentLongDim + triHeight,
+			y: 0,
+		},
+		{
+			x: triHeight + segmentLongDim,
+			y: segmentShortDim - triHeight,
+		},
+		{
+			x: triHeight,
+			y: segmentShortDim - triHeight,
+		},
+	],
+
+	transforms: {
+		//draw order + cumulative translations
+		A: { x: 0, y: 0 },
+		G: { x: 0, y: segmentLongDim + triHeight * 2 + gap * 2 },
+		D: { x: 0, y: segmentLongDim + triHeight * 2 + gap * 2 },
+
+		E: { x: -(segmentLongDim + triHeight * 2 + gap), y: 0 },
+		F: { x: -(segmentLongDim + triHeight * 2 + gap * 2), y: 0 },
+
+		B: { x: 0, y: -(segmentLongDim + triHeight * 2) },
+		C: { x: segmentLongDim + triHeight * 2 + gap * 2, y: 0 },
+	},
+};
+
 
 function setup() {
-	cnv = createCanvas(windowWidth, windowHeight).style("display", "block");
-
+	const cnv = createCanvas(windowWidth, windowHeight).style("display", "block");
+	angleMode(DEGREES);
 	(function drawButtons() {
+		let inputTime = 0;
 		let buttonA = createButton("Clear").id("clearButton");
 		buttonA.position(330, 175);
 		buttonA.mousePressed(() => {
@@ -107,7 +140,7 @@ function setup() {
 			if (currentBlock && timerBlocks.length) {
 				createTimer();
 			}
-			//TODO: remove status check when color bug in expired() is fixed
+			//TODO: remove status check when color bug in expired() is fixed for real
 			if (
 				!timerBlocks.length &&
 				status != Status.Expired &&
@@ -173,13 +206,13 @@ function setup() {
 			inputTime = 10 * 60;
 			createTimer(inputTime);
 		});
-		let button9 = createButton("5 min");
+		let button9 = createButton("&nbsp;&nbsp;5 min");
 		button9.position(170, 198);
 		button9.mousePressed(() => {
 			inputTime = 5 * 60;
 			createTimer(inputTime);
 		});
-		let button10 = createButton("1 min");
+		let button10 = createButton("&nbsp;&nbsp;1 min");
 		button10.position(170, 221);
 		button10.mousePressed(() => {
 			inputTime = 60;
@@ -205,26 +238,98 @@ function setup() {
 			createTimer(inputTime);
 		});
 	})();
+	//createTimer()
 } //setup
+
+function draw() {
+	//translate(-windowWidth/2,-windowHeight/2)
+	frameRate(10);
+	scale(0.68);
+	background(50);
+	textSize(30);
+	fill(255);
+	noStroke();
+
+	const statusTextLocation = numSegments * boxWidth + 10
+	let statusTextLineNumber = 1
+
+	text(status, statusTextLocation, textSize()*(statusTextLineNumber++));
+	text(`Total time worked: ${timeWorked}`, statusTextLocation, textSize()*(statusTextLineNumber++));
+
+	let cbText = currentBlock ? `${currentBlock.blockType} for ${currentBlock.blockDuration}` : ``;
+	text( `Current block: ${cbText}`, statusTextLocation, textSize()*(statusTextLineNumber++));
+
+	let totalQueued = timerBlocks.reduce((a,c) => a + c.blockDuration,0)
+	text(`${timerBlocks.length} queued blocks, ${totalQueued} total time`, statusTextLocation, textSize()*(statusTextLineNumber++));
+	
+	for (let i = 0; i < timerBlocks.length; i++) {
+		fill(TimerColors[timerBlocks[i].blockType]);
+		text(timerBlocks[i].blockDuration, statusTextLocation, textSize()*(statusTextLineNumber++));
+	}
+
+	let digits = remainingTime.toString().padStart(numSegments, "0");
+
+	fill(30);
+	//R-to-L
+	for (let i = numSegments - 1; i >= 0; i--) {
+		push();
+		translate(i * boxWidth, 0);
+		drawSevenSegment(digits[i]);
+		pop();
+	}
+
+}//draw
+
+function drawSegment(segment, lit) {
+	const altVert = segmentData.vertices;
+	const transform = segmentData.transforms[segment];
+	lit == 1 ? fill(onColor) : fill(TimerColors.Off);
+	translate(transform.x, transform.y);
+	beginShape();
+	for (const v of altVert) {
+		vertex(v.x, v.y);
+	}
+	endShape(CLOSE);
+} //drawSegment()
+
+function drawSevenSegment(numeralToDraw) {
+	rect(0, 0, boxWidth, boxHeight);
+	//blendMode is affected by push/pop
+	//despite documentation not mentioning it
+	//blendMode(DODGE);
+	const startX = boxWidth / 2 - segmentLongDim / 2 - triHeight;
+	const startY = boxHeight / 2 - triHeight * 2 - segmentLongDim - gap * 2;
+	push();
+	translate(startX, startY);
+	drawSegment("A", (litSegmentMask[numeralToDraw] >> 6) & 1);
+	drawSegment("G", (litSegmentMask[numeralToDraw] >> 0) & 1);
+	drawSegment("D", (litSegmentMask[numeralToDraw] >> 3) & 1);
+	rotate(90);
+	drawSegment("E", (litSegmentMask[numeralToDraw] >> 2) & 1);
+	drawSegment("F", (litSegmentMask[numeralToDraw] >> 1) & 1);
+	drawSegment("B", (litSegmentMask[numeralToDraw] >> 5) & 1);
+	drawSegment("C", (litSegmentMask[numeralToDraw] >> 4) & 1);
+	pop();
+} //drawSevenSegment()
 
 function createTimer(time, interval) {
 	if (timer) clearInterval(timer);
 	if (expiredTimer) clearInterval(expiredTimer);
 
+	const pB = select("#pauseButton")
+	if(pB) pB.html("Pause");
+
 	if (!time) {
+		//time can be an int or a TimerBlock
+		//shift() on empty array returns undefined, will default to new TimerBlock(defaultArg) 
 		time = timerBlocks.shift();
 	}
 	if (!(time instanceof TimerBlock)) time = new TimerBlock(time);
 
-	//select("#pauseButton").html("Pause");
-
-	currentTimerType = time.blockType;
-	onColor = TimerColors[currentTimerType];
-
-	currentBlock = time;
-	inputTime = time.blockDuration;
-	remainingTime = inputTime;
-
+	currentBlock = time
+	onColor = TimerColors[currentBlock.blockType];
+	remainingTime = currentBlock.blockDuration;
+	
 	startTimer(interval);
 } //createTimer()
 
@@ -234,7 +339,7 @@ function startTimer(interval) {
 	timer = setInterval(() => {
 		remainingTime--;
 
-		if (currentTimerType == TimerTypes.WorkTimer) {
+		if (currentBlock.blockType == TimerTypes.WorkTimer) {
 			timeWorked++;
 		}
 
@@ -245,24 +350,30 @@ function startTimer(interval) {
 				expired();
 			}
 		}
+		redraw();
 	}, interval);
-}
+}//startTimer()
 
 function expired() {
-	status = Status.Expired;
-	clearInterval(timer);
-	clearInterval(expiredTimer);
-	remainingTime = 0;
-	//TODO: currently buggy if expired() is called multiple times
-	//color can get stuck on TimerColors.Expired
-	let toggleBackToColor = onColor;
-	onColor = TimerColors.Expired;
-	expiredTimer = setInterval(() => {
-		onColor == toggleBackToColor
-			? (onColor = TimerColors.Expired)
-			: (onColor = toggleBackToColor);
-	}, 420);
-}
+	if(status != Status.Expired){
+		status = Status.Expired;
+		clearInterval(timer);
+		clearInterval(expiredTimer);
+		remainingTime = 0;
+		//TODO: currently buggy if expired() is called multiple times
+		//color can get stuck on TimerColors.Expired
+		//since toggleBackToColor gets set to the same color as as onColor
+		//Fixed for now (lol) by checking in expired() to see if we are currently expired
+		//But real state management would be a good idea (separation of concerns or something)
+		let toggleBackToColor = onColor;
+		onColor = TimerColors.Expired;
+		expiredTimer = setInterval(() => {
+			onColor == toggleBackToColor
+				? (onColor = TimerColors.Expired)
+				: (onColor = toggleBackToColor);
+		}, 420);
+	}
+}//expired()
 
 function clearTimer() {
 	status = Status.NotStarted;
@@ -272,7 +383,7 @@ function clearTimer() {
 	if (timer) clearInterval(timer);
 	if (expiredTimer) clearInterval(expiredTimer);
 	onColor = TimerColors.Work;
-}
+}//clearTimer()
 
 function pauseResume() {
 	switch (status) {
@@ -290,7 +401,7 @@ function pauseResume() {
 			startTimer();
 			break;
 	}
-}
+}//pauseResume()
 
 function restartTimer() {
 	select("#pauseButton").html("Pause");
@@ -300,9 +411,10 @@ function restartTimer() {
 		if (expiredTimer) clearInterval(expiredTimer);
 		createTimer(currentBlock);
 	}
-}
+}//restartTimer()
 
 function keyPressed() {
+	let inputTime = 0;
 	if (keyCode >= 49 && keyCode <= 57) {
 		inputTime = keyCode - 48;
 		createTimer(inputTime);
@@ -313,341 +425,20 @@ function keyPressed() {
 		createTimer(inputTime);
 		return false;
 	}*/
-}
+}//keyPressed()
 
-function draw() {
-	frameRate(30);
-	scale(0.68);
-	noSmooth();
-	background(50);
-	textSize(30);
-	fill(255);
-	text(status, numSegments * boxWidth + 10, 30);
-	let cbText = currentBlock
-		? currentBlock.blockType + " for " + currentBlock.blockDuration
-		: "";
-	text(
-		"Current block: " + cbText,
-		numSegments * boxWidth + 10,
-		30 + textSize(),
-	);
+function Pomodoro() {
+	timerBlocks.push(new TimerBlock(5 * 5 * 60, "Work"));
+	timerBlocks.push(new TimerBlock(1 * 5 * 60, "Break"));
 
-	let total = 0;
-	for (let i = 0; i < timerBlocks.length; i++) {
-		total += timerBlocks[i].blockDuration;
-		fill(TimerColors[timerBlocks[i].blockType]);
-		text(
-			timerBlocks[i].blockDuration,
-			numSegments * boxWidth + 10,
-			textSize() * 5 + i * textSize(),
-		);
-	}
-	fill(255);
-	text(
-		"Time worked: " + timeWorked,
-		numSegments * boxWidth + 10,
-		textSize() * 3,
-	);
-	text(
-		timerBlocks.length + " Queued blocks: " + total + " total time",
-		numSegments * boxWidth + 10,
-		textSize() * 4,
-	);
-	noStroke();
-	fill(30);
+	timerBlocks.push(new TimerBlock(5 * 5 * 60, "Work"));
+	timerBlocks.push(new TimerBlock(1 * 5 * 60, "Break"));
 
-	let digits = remainingTime.toString().padStart(numSegments, "0");
+	timerBlocks.push(new TimerBlock(5 * 5 * 60, "Work"));
+	timerBlocks.push(new TimerBlock(1 * 5 * 60, "Break"));
 
-	//R-to-L
-	for (let i = numSegments - 1; i >= 0; i--) {
-		push();
-		translate(i * boxWidth, 0);
-		drawSevenSegment(digits[i]);
-		pop();
-	}
-}
+	timerBlocks.push(new TimerBlock(5 * 5 * 60, "Work"));
+	timerBlocks.push(new TimerBlock(1 * 5 * 60, "Break"));
 
-function drawSevenSegment(num) {
-	rect(0, 0, boxWidth, boxHeight);
-	//blendMode is affected by push/pop
-	//despite documentation not mentioning it
-	blendMode(DODGE);
-	segA((digitCodes[num] >> 6) & 1);
-	segB((digitCodes[num] >> 5) & 1);
-	segC((digitCodes[num] >> 4) & 1);
-	segD((digitCodes[num] >> 3) & 1);
-	segE((digitCodes[num] >> 2) & 1);
-	segF((digitCodes[num] >> 1) & 1);
-	segG((digitCodes[num] >> 0) & 1);
-}
-
-function blurSeg(fn) {
-	fill(onColor);
-	//THIS IS SLOOOOOWWWWWWW, tanks fps to like 8
-	//seems like maybe an algo problem, since this is the "fast" way according to a quick search
-	//so I wonder if I can speed it up
-	/*drawingContext.filter="blur(2px) brightness(90%) saturate(90%)"
-	fn();
-	drawingContext.filter="none"*/
-}
-
-const segmentVertices = {
-	//Clockwise from left (horizontal) or top (vertical) triangle point
-	A: [
-		{
-			//-gap*2 on all Ys
-			x: boxWidth / 2 - segmentLongDim / 2 - triHeight,
-			y: margin.top + triHeight - gap * 2,
-		},
-		{
-			x: boxWidth / 2 - segmentLongDim / 2,
-			y: margin.top - gap * 2,
-		},
-		{
-			x: boxWidth / 2 + segmentLongDim / 2,
-			y: margin.top - gap * 2,
-		},
-		{
-			x: boxWidth / 2 + segmentLongDim / 2 + triHeight,
-			y: margin.top + triHeight - gap * 2,
-		},
-		{
-			x: boxWidth / 2 + segmentLongDim / 2,
-			y: margin.top + segmentShortDim - gap * 2,
-		},
-		{
-			x: boxWidth / 2 - segmentLongDim / 2,
-			y: margin.top + segmentShortDim - gap * 2,
-		},
-	],
-	B: [
-		{
-			//-gap on all Ys
-			x: boxWidth / 2 + segmentLongDim / 2 + triHeight,
-			y: margin.top + triHeight - gap,
-		},
-		{
-			x: boxWidth / 2 + segmentLongDim / 2 + segmentShortDim,
-			y: margin.top + segmentShortDim - gap,
-		},
-		{
-			x: boxWidth / 2 + segmentLongDim / 2 + segmentShortDim,
-			y: boxHeight / 2 - triHeight - gap,
-		},
-		{
-			x: boxWidth / 2 + segmentLongDim / 2 + triHeight,
-			y: boxHeight / 2 - gap,
-		},
-		{
-			x: boxWidth / 2 + segmentLongDim / 2,
-			y: boxHeight / 2 - triHeight - gap,
-		},
-		{
-			x: boxWidth / 2 + segmentLongDim / 2,
-			y: margin.top + segmentShortDim - gap,
-		},
-	],
-	C: [
-		{
-			//+gap on all Y's
-			x: boxWidth / 2 + segmentLongDim / 2 + triHeight,
-			y: boxHeight / 2 + gap,
-		},
-		{
-			x: boxWidth / 2 + segmentLongDim / 2 + segmentShortDim,
-			y: boxHeight / 2 + triHeight + gap,
-		},
-		{
-			x: boxWidth / 2 + segmentLongDim / 2 + segmentShortDim,
-			y: boxHeight / 2 + segmentLongDim + triHeight + gap,
-		},
-		{
-			x: boxWidth / 2 + segmentLongDim / 2 + triHeight,
-			y: boxHeight / 2 + segmentLongDim + segmentShortDim + gap,
-		},
-		{
-			x: boxWidth / 2 + segmentLongDim / 2,
-			y: boxHeight / 2 + segmentLongDim + triHeight + gap,
-		},
-		{
-			x: boxWidth / 2 + segmentLongDim / 2,
-			y: boxHeight / 2 + triHeight + gap,
-		},
-	],
-	D: [
-		{
-			//+gap*2 on all Y's
-			x: boxWidth / 2 - segmentLongDim / 2 - triHeight,
-			y: boxHeight - margin.bottom - triHeight + gap * 2,
-		},
-		{
-			x: boxWidth / 2 - segmentLongDim / 2,
-			y: boxHeight - margin.bottom - segmentShortDim + gap * 2,
-		},
-		{
-			x: boxWidth / 2 + segmentLongDim / 2,
-			y: boxHeight - margin.bottom - segmentShortDim + gap * 2,
-		},
-		{
-			x: boxWidth / 2 + segmentLongDim / 2 + triHeight,
-			y: boxHeight - margin.bottom - triHeight + gap * 2,
-		},
-		{
-			x: boxWidth / 2 + segmentLongDim / 2,
-			y: boxHeight - margin.bottom + gap * 2,
-		},
-		{
-			x: boxWidth / 2 - segmentLongDim / 2,
-			y: boxHeight - margin.bottom + gap * 2,
-		},
-	],
-	E: [
-		{
-			//+gap on all Y's
-			x: boxWidth / 2 - segmentLongDim / 2 - triHeight,
-			y: boxHeight / 2 + gap,
-		},
-		{
-			x: boxWidth / 2 - segmentLongDim / 2,
-			y: boxHeight / 2 + triHeight + gap,
-		},
-		{
-			x: boxWidth / 2 - segmentLongDim / 2,
-			y: boxHeight / 2 + segmentLongDim + triHeight + gap,
-		},
-		{
-			x: boxWidth / 2 - segmentLongDim / 2 - triHeight,
-			y: boxHeight / 2 + segmentLongDim + segmentShortDim + gap,
-		},
-		{
-			x: boxWidth / 2 - segmentLongDim / 2 - segmentShortDim,
-			y: boxHeight / 2 + segmentLongDim + triHeight + gap,
-		},
-		{
-			x: boxWidth / 2 - segmentLongDim / 2 - segmentShortDim,
-			y: boxHeight / 2 + triHeight + gap,
-		},
-	],
-	F: [
-		{
-			//-gap on all Y's
-			x: boxWidth / 2 - segmentLongDim / 2 - triHeight,
-			y: margin.top + triHeight - gap,
-		},
-		{
-			x: boxWidth / 2 - segmentLongDim / 2,
-			y: margin.top + segmentShortDim - gap,
-		},
-		{
-			x: boxWidth / 2 - segmentLongDim / 2,
-			y: boxHeight / 2 - triHeight - gap,
-		},
-		{
-			x: boxWidth / 2 - segmentLongDim / 2 - triHeight,
-			y: boxHeight / 2 - gap,
-		},
-		{
-			x: boxWidth / 2 - segmentLongDim / 2 - segmentShortDim,
-			y: boxHeight / 2 - triHeight - gap,
-		},
-		{
-			x: boxWidth / 2 - segmentLongDim / 2 - segmentShortDim,
-			y: margin.top + segmentShortDim - gap,
-		},
-	],
-	G: [
-		{
-			x: boxWidth / 2 - segmentLongDim / 2 - triHeight,
-			y: boxHeight / 2,
-		},
-		{
-			x: boxWidth / 2 - segmentLongDim / 2,
-			y: boxHeight / 2 - triHeight,
-		},
-		{
-			x: boxWidth / 2 + segmentLongDim / 2,
-			y: boxHeight / 2 - triHeight,
-		},
-		{
-			x: boxWidth / 2 + segmentLongDim / 2 + triHeight,
-			y: boxHeight / 2,
-		},
-		{
-			x: boxWidth / 2 + segmentLongDim / 2,
-			y: boxHeight / 2 + triHeight,
-		},
-		{
-			x: boxWidth / 2 - segmentLongDim / 2,
-			y: boxHeight / 2 + triHeight,
-		},
-	],
-};
-
-function drawSegmentShape(segment) {
-	const vertices = segmentVertices[segment];
-
-	beginShape();
-
-	for (let i = 0; i < vertices.length; i++) {
-		vertex(vertices[i].x, vertices[i].y);
-	}
-
-	endShape(CLOSE);
-}
-
-//top
-function segA(lit) {
-	if (arguments.length == 1) {
-		lit == 1 ? blurSeg(segA) : fill(TimerColors.Off);
-	}
-
-	drawSegmentShape("A");
-}
-//topLeft
-function segF(lit) {
-	if (arguments.length == 1) {
-		lit == 1 ? blurSeg(segF) : fill(TimerColors.Off);
-	}
-
-	drawSegmentShape("F");
-}
-//topRight
-function segB(lit) {
-	if (arguments.length == 1) {
-		lit == 1 ? blurSeg(segB) : fill(TimerColors.Off);
-	}
-
-	drawSegmentShape("B");
-}
-//middle
-function segG(lit) {
-	if (arguments.length == 1) {
-		lit == 1 ? blurSeg(segG) : fill(TimerColors.Off);
-	}
-
-	drawSegmentShape("G");
-}
-//bottomLeft
-function segE(lit) {
-	if (arguments.length == 1) {
-		lit == 1 ? blurSeg(segE) : fill(TimerColors.Off);
-	}
-
-	drawSegmentShape("E");
-}
-//bottomRight
-function segC(lit) {
-	if (arguments.length == 1) {
-		lit == 1 ? blurSeg(segC) : fill(TimerColors.Off);
-	}
-
-	drawSegmentShape("C");
-}
-//bottom
-function segD(lit) {
-	if (arguments.length == 1) {
-		lit == 1 ? blurSeg(segD) : fill(TimerColors.Off);
-	}
-
-	drawSegmentShape("D");
+	timerBlocks.push(new TimerBlock(6 * 5 * 60, "Break"));
 }
