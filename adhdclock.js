@@ -57,31 +57,14 @@ let currentBlock;
 const litSegmentMask = [0x7e, 0x30, 0x6d, 0x79, 0x33, 0x5b, 0x5f, 0x70, 0x7f, 0x7b];
 
 const segmentData = {
+	//clockwise winding from (left || top) triangle point
 	vertices: [
-		{
-			x: 0,
-			y: 0,
-		},
-		{
-			x: triHeight,
-			y: -triHeight,
-		},
-		{
-			x: triHeight + segmentLongDim,
-			y: -triHeight,
-		},
-		{
-			x: triHeight + segmentLongDim + triHeight,
-			y: 0,
-		},
-		{
-			x: triHeight + segmentLongDim,
-			y: segmentShortDim - triHeight,
-		},
-		{
-			x: triHeight,
-			y: segmentShortDim - triHeight,
-		},
+		{ x: 0, y: 0 },
+		{ x: triHeight, y: -triHeight },
+		{ x: triHeight + segmentLongDim, y: -triHeight },
+		{ x: triHeight + segmentLongDim + triHeight, y: 0 },
+		{ x: triHeight + segmentLongDim, y: segmentShortDim - triHeight },
+		{ x: triHeight, y: segmentShortDim - triHeight },
 	],
 
 	transforms: {
@@ -98,10 +81,13 @@ const segmentData = {
 	},
 };
 
+let pg;
+let cW,cH
+
+//TODO: properly integrate updateCanvas()
 
 function setup() {
-	const cnv = createCanvas(windowWidth, windowHeight).style("display", "block");
-	angleMode(DEGREES);
+	cnv = createCanvas(800,300).style("display", "block");
 	(function drawButtons() {
 		let inputTime = 0;
 		let buttonA = createButton("Clear").id("clearButton");
@@ -141,7 +127,7 @@ function setup() {
 				createTimer();
 			}
 			//TODO: remove status check when color bug in expired() is fixed for real
-			if (
+			else if (
 				!timerBlocks.length &&
 				status != Status.Expired &&
 				status != Status.NotStarted
@@ -238,78 +224,104 @@ function setup() {
 			createTimer(inputTime);
 		});
 	})();
+	cW = cnv.width
+	cH = cnv.height
+	frameRate(30);
+
+	pg = createGraphics(1200,450)
+	pg.angleMode(DEGREES)
+	updateCanvas()
 	//createTimer()
+
 } //setup
 
 function draw() {
-	//translate(-windowWidth/2,-windowHeight/2)
-	frameRate(10);
-	scale(0.68);
-	background(50);
-	textSize(30);
-	fill(255);
-	noStroke();
+	image(pg,0,0,cW,cH)
+}//draw
+
+function updateCanvas(){
+	pg.background(50);
+	pg.textSize(30);
+	pg.fill(255);
+	pg.noStroke();
 
 	const statusTextLocation = numSegments * boxWidth + 10
 	let statusTextLineNumber = 1
 
-	text(status, statusTextLocation, textSize()*(statusTextLineNumber++));
-	text(`Total time worked: ${timeWorked}`, statusTextLocation, textSize()*(statusTextLineNumber++));
+	pg.text(status, statusTextLocation, pg.textSize()*(statusTextLineNumber++));
+	pg.text(`Total time worked: ${timeWorked}`, statusTextLocation, pg.textSize()*(statusTextLineNumber++));
 
 	let cbText = currentBlock ? `${currentBlock.blockType} for ${currentBlock.blockDuration}` : ``;
-	text( `Current block: ${cbText}`, statusTextLocation, textSize()*(statusTextLineNumber++));
+	pg.text( `Current block: ${cbText}`, statusTextLocation, pg.textSize()*(statusTextLineNumber++));
 
 	let totalQueued = timerBlocks.reduce((a,c) => a + c.blockDuration,0)
-	text(`${timerBlocks.length} queued blocks, ${totalQueued} total time`, statusTextLocation, textSize()*(statusTextLineNumber++));
+	pg.text(`${timerBlocks.length} queued blocks, ${totalQueued} total time`, statusTextLocation, pg.textSize()*(statusTextLineNumber++));
 	
 	for (let i = 0; i < timerBlocks.length; i++) {
-		fill(TimerColors[timerBlocks[i].blockType]);
-		text(timerBlocks[i].blockDuration, statusTextLocation, textSize()*(statusTextLineNumber++));
+		pg.fill(TimerColors[timerBlocks[i].blockType]);
+		pg.text(timerBlocks[i].blockDuration, statusTextLocation, pg.textSize()*(statusTextLineNumber++));
 	}
 
 	let digits = remainingTime.toString().padStart(numSegments, "0");
-
-	fill(30);
+	pg.fill(30);
 	//R-to-L
+
 	for (let i = numSegments - 1; i >= 0; i--) {
-		push();
-		translate(i * boxWidth, 0);
+		pg.push();
+		pg.translate(i * boxWidth, 0);
 		drawSevenSegment(digits[i]);
-		pop();
+		pg.pop();
+
 	}
+}
 
-}//draw
 
+const test = 1
 function drawSegment(segment, lit) {
 	const altVert = segmentData.vertices;
 	const transform = segmentData.transforms[segment];
-	lit == 1 ? fill(onColor) : fill(TimerColors.Off);
-	translate(transform.x, transform.y);
-	beginShape();
+	lit == 1 ? pg.fill(onColor) : pg.fill(TimerColors.Off);
+	pg.translate(transform.x, transform.y);
+
+	pg.beginShape();
 	for (const v of altVert) {
-		vertex(v.x, v.y);
+		pg.vertex(v.x, v.y);
 	}
-	endShape(CLOSE);
+	pg.endShape(CLOSE);
+
+	if(lit && test){
+		pg.push()
+		pg.blendMode(DODGE)
+		pg.drawingContext.filter="blur(10px)"
+		pg.beginShape();
+		for (const v of altVert) {
+			pg.vertex(v.x, v.y);
+		}
+		pg.endShape(CLOSE);
+		pg.drawingContext.filter="none"
+		pg.pop();
+	}
+
 } //drawSegment()
 
 function drawSevenSegment(numeralToDraw) {
-	rect(0, 0, boxWidth, boxHeight);
+	pg.rect(0, 0, boxWidth, boxHeight);
 	//blendMode is affected by push/pop
 	//despite documentation not mentioning it
 	//blendMode(DODGE);
 	const startX = boxWidth / 2 - segmentLongDim / 2 - triHeight;
 	const startY = boxHeight / 2 - triHeight * 2 - segmentLongDim - gap * 2;
-	push();
-	translate(startX, startY);
+	pg.push();
+	pg.translate(startX, startY);
 	drawSegment("A", (litSegmentMask[numeralToDraw] >> 6) & 1);
 	drawSegment("G", (litSegmentMask[numeralToDraw] >> 0) & 1);
 	drawSegment("D", (litSegmentMask[numeralToDraw] >> 3) & 1);
-	rotate(90);
+	pg.rotate(90);
 	drawSegment("E", (litSegmentMask[numeralToDraw] >> 2) & 1);
 	drawSegment("F", (litSegmentMask[numeralToDraw] >> 1) & 1);
 	drawSegment("B", (litSegmentMask[numeralToDraw] >> 5) & 1);
 	drawSegment("C", (litSegmentMask[numeralToDraw] >> 4) & 1);
-	pop();
+	pg.pop();
 } //drawSevenSegment()
 
 function createTimer(time, interval) {
@@ -329,13 +341,14 @@ function createTimer(time, interval) {
 	currentBlock = time
 	onColor = TimerColors[currentBlock.blockType];
 	remainingTime = currentBlock.blockDuration;
-	
+	updateCanvas()
 	startTimer(interval);
 } //createTimer()
 
 function startTimer(interval) {
 	if (!interval || typeof interval != "number") interval = 1000;
 	status = Status.Running;
+	//updateCanvas()
 	timer = setInterval(() => {
 		remainingTime--;
 
@@ -350,8 +363,9 @@ function startTimer(interval) {
 				expired();
 			}
 		}
-		redraw();
+	updateCanvas()
 	}, interval);
+	updateCanvas()
 }//startTimer()
 
 function expired() {
@@ -371,7 +385,9 @@ function expired() {
 			onColor == toggleBackToColor
 				? (onColor = TimerColors.Expired)
 				: (onColor = toggleBackToColor);
+			updateCanvas()
 		}, 420);
+		updateCanvas()
 	}
 }//expired()
 
@@ -383,6 +399,7 @@ function clearTimer() {
 	if (timer) clearInterval(timer);
 	if (expiredTimer) clearInterval(expiredTimer);
 	onColor = TimerColors.Work;
+	updateCanvas()
 }//clearTimer()
 
 function pauseResume() {
@@ -401,6 +418,7 @@ function pauseResume() {
 			startTimer();
 			break;
 	}
+	updateCanvas()
 }//pauseResume()
 
 function restartTimer() {
@@ -411,6 +429,7 @@ function restartTimer() {
 		if (expiredTimer) clearInterval(expiredTimer);
 		createTimer(currentBlock);
 	}
+	updateCanvas()
 }//restartTimer()
 
 function keyPressed() {
@@ -441,4 +460,5 @@ function Pomodoro() {
 	timerBlocks.push(new TimerBlock(1 * 5 * 60, "Break"));
 
 	timerBlocks.push(new TimerBlock(6 * 5 * 60, "Break"));
+	updateCanvas()
 }
