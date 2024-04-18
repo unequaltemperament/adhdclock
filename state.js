@@ -1,71 +1,132 @@
-export {State,NotStarted,Running,Paused,Expired}
+class Status {
+	static NotStarted = "NotStarted";
+	static Running = "Running";
+	static Paused = "Paused";
+	static Expired = "Expired";
+} //Status
 
-class State{
+class stateManager {
+    constructor(st){
+        if(st){
+            console.debug(`Initializing new stateManager with ${st}`)
+            this.state = st;
+        }
+        else{
+            console.debug(`No state passed in, initializing stateManager with NotStartedState`)
+            this.state= NotStartedState
+        }
+    }
+	_state;
+
+	set state(st) {
+		if (!(this._state instanceof st)) {
+			this._state = new st(this);
+			this.enter();
+		}
+		else{
+			console.warn(`Already in ${this._state}State`)
+		}
+		return this
+	}
+
+	get state(){return this._state.status}
+
+	enter= function(){this._state.enter()}
+	start= function(){this._state.start()}
+    pause= function(){this._state.pause()}
+
+}
+
+class BaseState{
     constructor(ctx){
         this.context = ctx
     }
-    color = TimerColors.Work;
 
-    toString() {return this.timerStatus}
-    [Symbol.toPrimitive](hint){
+    color = TimerColors.Work;
+    static timerStatus = "Uninitialized";
+
+    static get status(){
         return this.timerStatus
     }
-    get [Symbol.toStringTag](){ return this.timerStatus}
-    enter(){ console.log(`entering states.${this.timerStatus}`)}
-    start(){ console.log("start")}
-	pause(){ console.log("pause")}
-	skip (){ console.log("skip")}
-	expire(){ console.log("expire")}
+
+    get status(){
+        return `${this.constructor}`
+    }
+
+    static toString(){return this.timerStatus}
+
+    toString() {return `${this.constructor}`}
+
+    static [Symbol.toPrimitive](hint){
+        switch(hint){
+            case "string":
+            case "default":
+                return this.timerStatus;
+            case "number":
+                console.log("Attempted to convert state to numeric value, currently not implemented");
+        }
+        return null;
+    }
+
+    [Symbol.toPrimitive](hint){
+        return `${this.constructor}`
+    }
+
+    static get [Symbol.toStringTag](){return this.timerStatus}
+    get [Symbol.toStringTag](){ return `${this.constructor[Symbol.toStringTag]}` }
+
+    enter(){ console.debug(`entering ${this.status}State`)}
+    start(){ console.debug("start")}
+	pause(){ console.debug("pause")}
+	skip (){ console.debug("skip")}
+	expire(){ console.debug("expire")}
 }
 
-class NotStarted extends State {
-	color = TimerColors.Work
-	timerStatus = Status.NotStarted
+class NotStartedState extends BaseState {
+    static timerStatus = Status.NotStarted
+    color = TimerColors.Work
+    
+
     start(){ createTimer()}
 }
 
-class Running extends State {
+class RunningState extends BaseState {
     constructor(ctx){
         super(ctx);
-        if(currentBlock){
-            this.color = TimerColors[currentBlock.type]
-        }
+        this.color = currentBlock ? TimerColors[currentBlock.type] : TimerColors.Work
     }
-    color = TimerColors.Work;
-	timerStatus = Status.Running;
-	start(){createTimer();color = TimerColors[currentBlock.type]}
-	// skip:  state.skip(),
-	// expire: state.expire()
 
+    static timerStatus = Status.Running
+
+	start(){createTimer();color = TimerColors[currentBlock.type]}
     enter(){super.enter();this.start()}
-	pause(){
+/* 	pause(){
 		timerStatus = Status.Paused;
 		select("#pauseButton").html("Resume");
 		clearInterval(timer);
-	}
+	} */
 }
 
-class Paused extends State {
-	color = TimerColors[currentBlock.type]
-	timerStatus = Status.Paused
-	 start(){
+class PausedState extends BaseState {
+    constructor(ctx){
+        super(ctx);
+        this.color = currentBlock ? TimerColors[currentBlock.type] : TimerColors.Work
+    }
+
+    static timerStatus = Status.Paused
+	/* start(){
 		select("#pauseButton").html("Pause");
-		startTimer();
-	 }
-	// pause: state.pause(),
-	// skip:  state.skip(),
-	// expire: state.expire()
+	    startTimer();
+	} */
+
 }
 
-class Expired extends State {
-	color = TimerColors.Expired
-	timerStatus = Status.Expired
-	start(){createTimer()}
-	// pause: state.pause(),
-	// skip:  state.skip(),
-	// expire: state.expire()
-}
+class ExpiredState extends BaseState {
 
+    color = TimerColors.Expired
+    static timerStatus = Status.Expired
+
+}
 
 ////////////////////////////////////
 /* function expired() {

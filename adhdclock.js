@@ -1,19 +1,5 @@
 "use strict";
-
 p5.disableFriendlyErrors = true;
-let cnv;
-let pg;
-let cW, cH;
-let ratio = 1;
-let startedAt = new Date().now;
-const states = {}
-
-class Status {
-	static NotStarted = "NotStarted";
-	static Running = "Running";
-	static Paused = "Paused";
-	static Expired = "Expired";
-} //Status
 
 class TimerColors {
 	static Work = "#ffef33";
@@ -40,69 +26,12 @@ class TimerBlock {
 	}
 } //TimerBlock
 
-class statusManager {
-	_state
-
-	set state(st) {
-		if (!(this._state instanceof st)) {
-			this._state = new st(this);
-			this.enter();
-			updateStatusText()
-		}
-		else{
-			console.warn(`Already in states.${this._state}`)
-		}
-		return this
-	}
-
-	get state(){return this._state}
-	enter = function(){this._state.enter()}
-	start= function(){this._state.start()}
-
+class States {
+	static NotStarted = NotStartedState;
+	static Running = RunningState;
+	static Paused = PausedState;
+	static Expired = ExpiredState;
 }
-
-//dynamic import avoids issues with p5 global mode vs instance mode
-//TODO: need to wrap in async/await before sending out into the world
-//TODO: deal with this being async
-const manager = new statusManager();
-import("./state.js").then(
-	(mod) => {
-		for (const e in mod) {
-			states[`${e}`] = mod[e]
-		}
-		manager.state = states.NotStarted
-	},
-	() => console.error("Importing states failed!!!")
-)
-
-
-const boxWidth = 150;
-const boxHeight = 250;
-const segmentLongDim = 80; //80
-const segmentShortDim = 12; //12
-const triHeight = segmentShortDim / 2; // 2
-const gap = 2; //2
-const numSegments = 5;
-let onColor = TimerColors.Work;
-
-
-const timerQueue = [];
-timerQueue.queue = function (...blocks) {
-	this.push(...blocks)
-	updateStatusText();
-}
-Object.defineProperty(timerQueue, "duration", { get() { return this.reduce((a, c) => a + c.duration, 0) } })
-
-
-let remainingTime = 0;
-let timeWorked = 0;
-
-let timer;
-let expiredTimer;
-
-let timerStatus = Status.NotStarted;
-let currentTimerType = TimerTypes.WorkTimer;
-let currentBlock;
 
 //		  | bitmasks for each numeral's required segments
 //    A   | 1's & capitals indicates a lit segment:
@@ -140,12 +69,43 @@ const segmentData = {
 	},
 };
 
-//TODO: properly integrate updateCanvas()
+const manager = new stateManager(States.NotStarted);
 
-window.setup = function() {
+let cnv;
+let pg;
+let cW, cH;
+let ratio = 1;
+let startedAt = new Date().now;
+let onColor = TimerColors.Work;
+
+let remainingTime = 0;
+let timeWorked = 0;
+let timer;
+let expiredTimer;
+let timerStatus = manager.state;
+let currentTimerType = TimerTypes.WorkTimer;
+let currentBlock;
+
+const boxWidth = 150;
+const boxHeight = 250;
+const segmentLongDim = 80; //80
+const segmentShortDim = 12; //12
+const triHeight = segmentShortDim / 2; // 2
+const gap = 2; //2
+const numSegments = 5;
+
+const timerQueue = new Array();
+Object.defineProperty(timerQueue, "duration", { get() { return this.reduce((a, c) => a + c.duration, 0) } })
+timerQueue.queue = function (...blocks) {
+	this.push(...blocks)
+	updateStatusText();
+}
+
+//TODO: properly integrate updateCanvas()
+function setup() {
 	document.styleSheets[0].insertRule("body { overflow:hidden }");
 	cnv = createCanvas(800, 300).style("display", "block");
-	frameRate(30);
+	frameRate(60);
 	pg = createGraphics(1200, 450);
 	pg.textSize(20);
 	pg.noStroke();
@@ -155,15 +115,34 @@ window.setup = function() {
 	ratio = cnv.width/pg.width
 
 	drawButtons();
-	updateDisplay();
+	updateCanvas();
 	//createTimer();
 } //setup()
 
-window.draw = function() {
+function draw() {
 	background(50)
 	image(pg, 0, 0, cnv.width, cnv.height);
 	//drawProgressBar();
+	frameVis();
 } //draw()
+
+
+function frameVis(){
+	const f = getTargetFrameRate()
+	const w = cnv.width / 2
+	const visPerc = ((frameCount % f)/(f-1))
+	push()
+	stroke(255)
+	strokeWeight(1)
+	line(w - w/2, cnv.height-20, w-w/2, cnv.height-10)
+	line(w + w/2, cnv.height-20, w+w/2, cnv.height-10)
+	fill("red")
+	noStroke();
+	rect(w-w/2,cnv.height-20,w*visPerc,10)
+	pop()
+
+	//if(frameCount==f)	createTimer();
+}
 
  function drawProgressBar(){
 	if(currentBlock){
@@ -181,7 +160,6 @@ window.draw = function() {
 function updateStatusText() {
 	const workStatusTextLocation = numSegments * boxWidth + 10;
 	let workStatusTextLineNumber = 1;
-
 	pg.fill(50);
 	pg.rect(workStatusTextLocation, 0, pg.width - workStatusTextLocation, pg.height);
 	pg.fill(255);
@@ -223,7 +201,8 @@ function updateDisplay() {
 	const digits = remainingTime.toString().padStart(numSegments, "0");
 
 	pg.fill(30);
-
+	pg.push();
+		
 	//R-to-L
 	for (let i = numSegments - 1; i >= 0; i--) {
 		pg.push();
@@ -231,11 +210,12 @@ function updateDisplay() {
 		drawSevenSegment(digits[i]);
 		pg.pop();
 	}
+	pg.pop()
 } //updateDisplay()
 
 function updateCanvas() {
-	updateStatusText();
-	updateDisplay();
+ 	updateStatusText();
+	updateDisplay(); 
 	
 } //updateCanvas()
 
@@ -259,8 +239,14 @@ function drawSegment(segment, lit) {
 			break;
 	}
 	pg.fill(glowColor)
-	pg.drawingContext.filter = "blur(3px)";
 	pg.beginShape();
+
+	//blur is maybe causing performance problems
+	//but it may also simply being called too often
+
+	//TODO: look into only drawing changed segments
+	//or draw lit segments in a batch, or both
+	//pg.drawingContext.filter = "blur(4px)"
 	for (const v of verts) {
 		pg.vertex(v.x, v.y);
 	}
@@ -320,7 +306,7 @@ function createTimer(time, interval) {
 	currentBlock = time;
 	onColor = TimerColors[currentBlock.type];
 	remainingTime = currentBlock.duration;
-	updateCanvas();
+	//updateCanvas();
 	startTimer(interval);
 } //createTimer()
 
@@ -330,7 +316,8 @@ function startTimer(interval) {
 	startedAt = Date.now()
 	//updateCanvas()
 	timer = setInterval(() => {
-		remainingTime--;
+		remainingTime--
+		// remainingTime = Math.floor(Math.random()*100000);	
 
 		if (currentBlock.type == TimerTypes.WorkTimer) {
 			timeWorked++;
@@ -401,7 +388,7 @@ function drawButtons() {
 	buttonB.id("pauseButton");
 	buttonB.position(330, 198);
 	buttonB.mousePressed(() => {
-		pauseResume();
+		manager.pause();
 	});
 
 	const buttonC = createButton("Restart");
@@ -413,7 +400,7 @@ function drawButtons() {
 	const buttonD = createButton("Start");
 	buttonD.position(410, 175);
 	buttonD.mousePressed(() => {
-		manager.state = states.Running
+		manager.state = States.Running
 	});
 
 	const buttonE = createButton("Skip Current");
