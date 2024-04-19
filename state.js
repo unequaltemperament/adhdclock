@@ -1,3 +1,5 @@
+//export {Status,stateManager,BaseState,NotStartedState,RunningState,PausedState,ExpiredState,restartTimer};
+
 class Status {
 	static NotStarted = "NotStarted";
 	static Running = "Running";
@@ -6,100 +8,89 @@ class Status {
 } //Status
 
 class stateManager {
-    constructor(st){
-        if(st){
-            console.debug(`Initializing new stateManager with ${st}`)
-            this.state = st;
-        }
-        else{
-            console.debug(`No state passed in, initializing stateManager with NotStartedState`)
-            this.state= NotStartedState
-        }
-    }
+	constructor(st){
+		if(st){
+			console.debug(`Initializing new stateManager with ${st}`);
+			this.state = st;
+		}
+		else{
+			console.debug(`No state passed in, initializing stateManager with NotStartedState`);
+			this.state= States.NotStarted;
+		}
+	}
 	_state;
 
 	set state(st) {
 		if (!(this._state instanceof st)) {
 			this._state = new st(this);
+			console.debug(`stateManager: Entering ${this.state}State`);
 			this.enter();
+			updateCanvas(this);
 		}
 		else{
-			console.warn(`Already in ${this._state}State`)
+			console.warn(`Already in ${this._state}State`);
 		}
-		return this
 	}
 
-	get state(){return this._state.status}
+	get [Symbol.toStringTag](){return this.constructor.name;}
+	toString() {return this.constructor.name;}
 
-	enter= function(){this._state.enter()}
-	start= function(){this._state.start()}
-    pause= function(){this._state.pause()}
+	get state(){return this._state.status;}
+
+	enter= function(){this._state.enter();};
+	start= function(){this._state.start();};
+	pause= function(){this._state.pause();};
 
 }
 
 class BaseState{
-    constructor(ctx){
-        this.context = ctx
-    }
+	constructor(ctx){
+		this.context = ctx;
+	}
 
-    color = TimerColors.Work;
-    static timerStatus = "Uninitialized";
+	color = TimerColors.Work;
+	static timerStatus = "Uninitialized";
 
-    static get status(){
-        return this.timerStatus
-    }
+	static get status(){return this.timerStatus;}
+	static get [Symbol.toStringTag](){return `${this.status}State`;}
+	static toString(){return this.status;}
 
-    get status(){
-        return `${this.constructor}`
-    }
+	get status(){return this.constructor.status;}
+	get [Symbol.toStringTag](){return this.constructor[Symbol.toStringTag];}
+	toString() {return this.constructor.toString();}
 
-    static toString(){return this.timerStatus}
-
-    toString() {return `${this.constructor}`}
-
-    static [Symbol.toPrimitive](hint){
-        switch(hint){
-            case "string":
-            case "default":
-                return this.timerStatus;
-            case "number":
-                console.log("Attempted to convert state to numeric value, currently not implemented");
-        }
-        return null;
-    }
-
-    [Symbol.toPrimitive](hint){
-        return `${this.constructor}`
-    }
-
-    static get [Symbol.toStringTag](){return this.timerStatus}
-    get [Symbol.toStringTag](){ return `${this.constructor[Symbol.toStringTag]}` }
-
-    enter(){ console.debug(`entering ${this.status}State`)}
-    start(){ console.debug("start")}
-	pause(){ console.debug("pause")}
-	skip (){ console.debug("skip")}
-	expire(){ console.debug("expire")}
+	enter (){ console.debug(`BaseState enter`);}
+	start (){ console.debug("BaseState start");}
+	pause (){ console.debug("BaseState pause");}
+	skip  (){ console.debug("BaseState skip");}
+	expire(){ console.debug("BaseState expire");}
 }
 
 class NotStartedState extends BaseState {
-    static timerStatus = Status.NotStarted
-    color = TimerColors.Work
+	static timerStatus = Status.NotStarted;
+	color = TimerColors.Work;
     
-
-    start(){ createTimer()}
+	enter(){
+		remainingTime = 0;
+		currentBlock = null;
+		select("#pauseButton").html("Pause");
+		if (timer) clearInterval(timer);
+		if (expiredTimer) clearInterval(expiredTimer);
+		onColor = TimerColors.Work;
+	}
+	start(){ this.context.state=States.Running;}
 }
 
 class RunningState extends BaseState {
-    constructor(ctx){
-        super(ctx);
-        this.color = currentBlock ? TimerColors[currentBlock.type] : TimerColors.Work
-    }
+	constructor(ctx){
+		super(ctx);
+		this.color = currentBlock ? TimerColors[currentBlock.type] : TimerColors.Work;
+	}
+	
+	static timerStatus = Status.Running;
 
-    static timerStatus = Status.Running
-
-	start(){createTimer();color = TimerColors[currentBlock.type]}
-    enter(){super.enter();this.start()}
+	start(){createTimer();color = TimerColors[currentBlock.type];}
+	enter(){this.context.start();}
 /* 	pause(){
 		timerStatus = Status.Paused;
 		select("#pauseButton").html("Resume");
@@ -108,12 +99,12 @@ class RunningState extends BaseState {
 }
 
 class PausedState extends BaseState {
-    constructor(ctx){
-        super(ctx);
-        this.color = currentBlock ? TimerColors[currentBlock.type] : TimerColors.Work
-    }
+	constructor(ctx){
+		super(ctx);
+		this.color = currentBlock ? TimerColors[currentBlock.type] : TimerColors.Work;
+	}
 
-    static timerStatus = Status.Paused
+	static timerStatus = Status.Paused;
 	/* start(){
 		select("#pauseButton").html("Pause");
 	    startTimer();
@@ -123,24 +114,15 @@ class PausedState extends BaseState {
 
 class ExpiredState extends BaseState {
 
-    color = TimerColors.Expired
-    static timerStatus = Status.Expired
+	color = TimerColors.Expired;
+	static timerStatus = Status.Expired;
 
-}
-
-////////////////////////////////////
-/* function expired() {
-	if (timerStatus != Status.Expired) {
-		timerStatus = Status.Expired;
+	enter(){
 		clearInterval(timer);
 		clearInterval(expiredTimer);
 		remainingTime = 0;
 		currentBlock = null;
-		//TODO: currently buggy if expired() is called multiple times
-		//color can get stuck on TimerColors.Expired
-		//since toggleBackToColor gets set to the same color as as onColor
-		//Fixed for now (lol) by checking in expired() to see if we are currently expired
-		//But real state management would be a good idea (separation of concerns or something)
+		//TODO: sniff through this
 		let toggleBackToColor = onColor;
 		onColor = TimerColors.Expired;
 		expiredTimer = setInterval(() => {
@@ -149,15 +131,14 @@ class ExpiredState extends BaseState {
 				: (onColor = toggleBackToColor);
 			updateCanvas();
 		}, 420);
-		updateCanvas();
 	}
-} //expired()
 
+}
 
+////////////////////////////////////
 function restartTimer() {
 	select("#pauseButton").html("Pause");
 	if (currentBlock) {
-		timerStatus = Status.Running;
 		if (timer) clearInterval(timer);
 		if (expiredTimer) clearInterval(expiredTimer);
 		createTimer(currentBlock);

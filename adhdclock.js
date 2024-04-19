@@ -1,5 +1,7 @@
 "use strict";
-p5.disableFriendlyErrors = true;
+//export {frameVis, drawProgressBar, updateStatusText, updateTimerDisplay, updateCanvas, drawSegment, drawSevenSegment, createTimer, startTimer, clearTimer, keyPressed, Pomodoro, drawButtons };
+//import {Status,stateManager,BaseState,NotStartedState,RunningState,PausedState,ExpiredState,restartTimer,TimerColors}  from "./state.js";
+window.p5.disableFriendlyErrors = true;
 
 class TimerColors {
 	static Work = "#ffef33";
@@ -9,9 +11,9 @@ class TimerColors {
 } //TimerColors
 
 class TimerGlowColors {
-	static Work = "#ba8500"
-	static Break = "green"
-	static Expired = "red"
+	static Work = "#ba8500";
+	static Break = "green";
+	static Expired = "red";
 } //TimerGlowColors
 
 class TimerTypes {
@@ -32,6 +34,35 @@ class States {
 	static Paused = PausedState;
 	static Expired = ExpiredState;
 }
+
+const timerQueue = new Array();
+Object.defineProperty(timerQueue, "duration", { get() { return this.reduce((a, c) => a + c.duration, 0);} });
+timerQueue.queue = function (...blocks) {
+	this.push(...blocks);
+	updateStatusText();
+};
+Object.defineProperty(timerQueue, "isEmpty", { get() { return this.length==0;}});
+
+let manager;
+
+let cnv;
+let pg;
+let startedAt = new Date().now;
+let onColor;
+
+let remainingTime=0;
+let timeWorked = 0;
+let timer;
+let expiredTimer;
+let currentBlock;
+
+const boxWidth = 150;
+const boxHeight = 250;
+const segmentLongDim = 80; //80
+const segmentShortDim = 12; //12
+const triHeight = segmentShortDim / 2; // 2
+const gap = 2; //2
+const numSegments = 5;
 
 //		  | bitmasks for each numeral's required segments
 //    A   | 1's & capitals indicates a lit segment:
@@ -69,40 +100,8 @@ const segmentData = {
 	},
 };
 
-const manager = new stateManager(States.NotStarted);
-
-let cnv;
-let pg;
-let cW, cH;
-let ratio = 1;
-let startedAt = new Date().now;
-let onColor = TimerColors.Work;
-
-let remainingTime = 0;
-let timeWorked = 0;
-let timer;
-let expiredTimer;
-let timerStatus = manager.state;
-let currentTimerType = TimerTypes.WorkTimer;
-let currentBlock;
-
-const boxWidth = 150;
-const boxHeight = 250;
-const segmentLongDim = 80; //80
-const segmentShortDim = 12; //12
-const triHeight = segmentShortDim / 2; // 2
-const gap = 2; //2
-const numSegments = 5;
-
-const timerQueue = new Array();
-Object.defineProperty(timerQueue, "duration", { get() { return this.reduce((a, c) => a + c.duration, 0) } })
-timerQueue.queue = function (...blocks) {
-	this.push(...blocks)
-	updateStatusText();
-}
-
 //TODO: properly integrate updateCanvas()
-function setup() {
+window.setup=function() {
 	document.styleSheets[0].insertRule("body { overflow:hidden }");
 	cnv = createCanvas(800, 300).style("display", "block");
 	frameRate(60);
@@ -112,15 +111,17 @@ function setup() {
 	pg.textFont("monospace");
 	pg.angleMode(DEGREES);
 
-	ratio = cnv.width/pg.width
-
 	drawButtons();
-	updateCanvas();
+
+	manager = new stateManager(States.NotStarted);
+	//manager.enter();
+	//updateCanvas();
+	//manager.start();
 	//createTimer();
 } //setup()
 
-function draw() {
-	background(50)
+window.draw=function() {
+	background(50);
 	image(pg, 0, 0, cnv.width, cnv.height);
 	//drawProgressBar();
 	frameVis();
@@ -128,42 +129,47 @@ function draw() {
 
 
 function frameVis(){
-	const f = getTargetFrameRate()
-	const w = cnv.width / 2
-	const visPerc = ((frameCount % f)/(f-1))
-	push()
-	stroke(255)
-	strokeWeight(1)
-	line(w - w/2, cnv.height-20, w-w/2, cnv.height-10)
-	line(w + w/2, cnv.height-20, w+w/2, cnv.height-10)
-	fill("red")
+	const f = getTargetFrameRate();
+	const w = cnv.width / 2;
+	const visPerc = ((frameCount % f)/(f-1));
+	push();
+	stroke(255);
+	strokeWeight(1);
+	line(w - w/2, cnv.height-20, w-w/2, cnv.height-10);
+	line(w + w/2, cnv.height-20, w+w/2, cnv.height-10);
+	fill("red");
 	noStroke();
-	rect(w-w/2,cnv.height-20,w*visPerc,10)
-	pop()
+	rect(w-w/2,cnv.height-20,w*visPerc,10);
+	pop();
 
 	//if(frameCount==f)	createTimer();
 }
 
- function drawProgressBar(){
+function drawProgressBar(){
 	if(currentBlock){
-		push()
-		const progress = ((Date.now() - startedAt) / (currentBlock.duration*1000))
-		const barEnd = progress * boxWidth * numSegments
+		push();
+		const progress = ((Date.now() - startedAt) / (currentBlock.duration*1000));
+		const barEnd = progress * boxWidth * numSegments;
 		noStroke();
 		noSmooth();
-		fill(onColor)
-		rect(0,0,barEnd,triHeight)
-		pop()
+		fill(onColor);
+		rect(0,0,barEnd,triHeight);
+		pop();
 	}
 } 
 
-function updateStatusText() {
+function updateStatusText(x) {
+	//x is only passed for NotStartedState.enter()'s startup
+	//to access manager status during canvas initialization
+	//TODO: save all canvas updates until all state is initialized
+	//or enter state after manager and canvas are both initialized
+	if(!x) x=manager;
 	const workStatusTextLocation = numSegments * boxWidth + 10;
 	let workStatusTextLineNumber = 1;
 	pg.fill(50);
 	pg.rect(workStatusTextLocation, 0, pg.width - workStatusTextLocation, pg.height);
 	pg.fill(255);
-	pg.text(manager.state, workStatusTextLocation, pg.textSize() * workStatusTextLineNumber++);
+	pg.text(x.state, workStatusTextLocation, pg.textSize() * workStatusTextLineNumber++);
 	pg.text(
 		`Total time worked: ${timeWorked}`,
 		workStatusTextLocation,
@@ -197,7 +203,7 @@ function updateStatusText() {
 	}
 } //updateStatustext()
 
-function updateDisplay() {
+function updateTimerDisplay() {
 	const digits = remainingTime.toString().padStart(numSegments, "0");
 
 	pg.fill(30);
@@ -210,12 +216,12 @@ function updateDisplay() {
 		drawSevenSegment(digits[i]);
 		pg.pop();
 	}
-	pg.pop()
-} //updateDisplay()
+	pg.pop();
+} //updateTimerDisplay()
 
-function updateCanvas() {
- 	updateStatusText();
-	updateDisplay(); 
+function updateCanvas(x) {
+ 	updateStatusText(x);
+	updateTimerDisplay(); 
 	
 } //updateCanvas()
 
@@ -227,9 +233,9 @@ function drawSegment(segment, lit) {
 	pg.translate(transform.x, transform.y);
 
 	if (lit) {
-	pg.push();
-	let glowColor = TimerGlowColors.Work;
-	switch(onColor){
+		pg.push();
+		let glowColor = TimerGlowColors.Work;
+		switch(onColor){
 		//TODO: get good glow colors
 		case TimerColors.Break:
 			glowColor = TimerGlowColors.Break;
@@ -237,21 +243,21 @@ function drawSegment(segment, lit) {
 		case TimerColors.Expired:
 			glowColor = TimerGlowColors.Expired;
 			break;
-	}
-	pg.fill(glowColor)
-	pg.beginShape();
+		}
+		pg.fill(glowColor);
+		pg.beginShape();
 
-	//blur is maybe causing performance problems
-	//but it may also simply being called too often
+		//blur is maybe causing performance problems
+		//but it may also simply being called too often
 
-	//TODO: look into only drawing changed segments
-	//or draw lit segments in a batch, or both
-	//pg.drawingContext.filter = "blur(4px)"
-	for (const v of verts) {
-		pg.vertex(v.x, v.y);
-	}
-	pg.endShape(CLOSE);
-	pg.pop();
+		//TODO: look into only drawing changed segments
+		//or draw lit segments in a batch, or both
+		//pg.drawingContext.filter = "blur(4px)"
+		for (const v of verts) {
+			pg.vertex(v.x, v.y);
+		}
+		pg.endShape(CLOSE);
+		pg.pop();
 	}
 
 	pg.blendMode(OVERLAY);
@@ -284,17 +290,17 @@ function drawSevenSegment(numeralToDraw) {
 function createTimer(time, interval) {
 	//time can be an int or a TimerBlock
 	//shift() on empty array returns undefined, will default to new TimerBlock(defaultArg)
-	if (!time) {time = timerQueue.shift()};
+	if (!time) {time = timerQueue.shift();};
 	if (!(time instanceof TimerBlock)) time = new TimerBlock(time);
 
 	try{
 		if( time.duration.toString().length > numSegments){
-			throw new RangeError(`Input time contains too many digits, new Timer not created`)
+			throw new RangeError(`Input time contains too many digits, new Timer not created`);
 		}
 	}
 	catch(e){
 		debugger;
-		console.error(e)
+		console.error(e);
 	}
 
 	if (timer) clearInterval(timer);
@@ -312,11 +318,10 @@ function createTimer(time, interval) {
 
 function startTimer(interval) {
 	if (!interval || typeof interval != "number") interval = 1000;
-	timerStatus = Status.Running;
-	startedAt = Date.now()
+	startedAt = Date.now();
 	//updateCanvas()
 	timer = setInterval(() => {
-		remainingTime--
+		remainingTime--;
 		// remainingTime = Math.floor(Math.random()*100000);	
 
 		if (currentBlock.type == TimerTypes.WorkTimer) {
@@ -324,10 +329,10 @@ function startTimer(interval) {
 		}
 
 		if (remainingTime == 0) {
-			if (timerQueue.length) {
+			if (!timerQueue.isEmpty) {
 				createTimer(timerQueue.shift());
 			} else {
-				expired();
+				manager.state=States.Expired;
 			}
 		}
 		updateCanvas();
@@ -336,14 +341,8 @@ function startTimer(interval) {
 } //startTimer()
 
 function clearTimer() {
-	timerStatus = Status.NotStarted;
-	remainingTime = 0;
-	currentBlock = null;
-	select("#pauseButton").html("Pause");
-	if (timer) clearInterval(timer);
-	if (expiredTimer) clearInterval(expiredTimer);
-	onColor = TimerColors.Work;
-	updateCanvas();
+	manager.state=States.NotStarted;
+
 } //clearTimer()
 
 function keyPressed() {
@@ -400,22 +399,20 @@ function drawButtons() {
 	const buttonD = createButton("Start");
 	buttonD.position(410, 175);
 	buttonD.mousePressed(() => {
-		manager.state = States.Running
+		manager.state = States.Running;
 	});
 
 	const buttonE = createButton("Skip Current");
 	buttonE.position(410, 198);
 	buttonE.mousePressed(() => {
-		if (currentBlock && timerQueue.length) {
+		if (currentBlock && !timerQueue.isEmpty) {
 			createTimer();
 		}
 		//TODO: remove workStatus check when color bug in expired() is fixed for real
 		else if (
-			!timerQueue.length &&
-			timerStatus != Status.Expired &&
-			timerStatus != Status.NotStarted
+			timerQueue.isEmpty && manager.state != Status.NotStarted
 		) {
-			expired();
+			manager.state = States.Expired;
 		}
 	});
 
