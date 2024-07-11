@@ -37,24 +37,33 @@ class States {
 
 const timerQueue = new Array();
 Object.defineProperty(timerQueue, "duration", { get() { return this.reduce((a, c) => a + c.duration, 0);} });
+Object.defineProperty(timerQueue, "isEmpty", { get() { return this.length===0;}});
+
 timerQueue.queue = function (...blocks) {
 	this.push(...blocks);
 	updateStatusText();
 };
-Object.defineProperty(timerQueue, "isEmpty", { get() { return this.length==0;}});
+
+timerQueue.queueFront = function (...blocks) {
+	this.unshift(...blocks);
+	//TODO: why is this commented out? 
+	//updateStatusText();
+};
+
+
+
 
 let manager;
 
 let cnv;
 let pg;
-let startedAt = new Date().now;
 let onColor;
 
 let remainingTime=0;
 let timeWorked = 0;
 let timer;
 let expiredTimer;
-let currentBlock;
+let currentTimerBlock;
 
 const boxWidth = 150;
 const boxHeight = 250;
@@ -123,7 +132,7 @@ window.setup=function() {
 window.draw=function() {
 	background(50);
 	image(pg, 0, 0, cnv.width, cnv.height);
-	//drawProgressBar();
+	drawProgressBar();
 	frameVis();
 } //draw()
 
@@ -142,14 +151,15 @@ function frameVis(){
 	rect(w-w/2,cnv.height-20,w*visPerc,10);
 	pop();
 
-	//if(frameCount==f)	createTimer();
+	//if(frameCount==f)	{createTimer();startTimer();}
 }
 
 function drawProgressBar(){
-	if(currentBlock){
+	if(currentTimerBlock){
 		push();
-		const progress = ((Date.now() - startedAt) / (currentBlock.duration*1000));
-		const barEnd = progress * boxWidth * numSegments;
+		//TODO: lerp this
+		const progress = (currentTimerBlock.duration - remainingTime) / (currentTimerBlock.duration);
+		const barEnd = progress * boxWidth * numSegments *(cnv.width/pg.width);
 		noStroke();
 		noSmooth();
 		fill(onColor);
@@ -176,8 +186,8 @@ function updateStatusText(x) {
 		pg.textSize() * workStatusTextLineNumber++,
 	);
 
-	const cbText = currentBlock
-		? `${currentBlock.type} for ${currentBlock.duration}`
+	const cbText = currentTimerBlock
+		? `${currentTimerBlock.type} for ${currentTimerBlock.duration}`
 		: ``;
 		
 	pg.text(
@@ -287,10 +297,12 @@ function drawSevenSegment(numeralToDraw) {
 	pg.pop();
 } //drawSevenSegment()
 
-function createTimer(time, interval) {
+
+function loadTimerBlock(time) {
+	
 	//time can be an int or a TimerBlock
 	//shift() on empty array returns undefined, will default to new TimerBlock(defaultArg)
-	if (!time) {time = timerQueue.shift();};
+	if (!time) {time = timerQueue.shift();}
 	if (!(time instanceof TimerBlock)) time = new TimerBlock(time);
 
 	try{
@@ -301,38 +313,35 @@ function createTimer(time, interval) {
 	catch(e){
 		debugger;
 		console.error(e);
+		return false;
 	}
+	currentTimerBlock = time;
+	//TODO: move to startTimer?
+	remainingTime = currentTimerBlock.duration;
+	updateCanvas();
+} //createTimer()
+
+function startTimer(interval) {
 
 	if (timer) clearInterval(timer);
 	if (expiredTimer) clearInterval(expiredTimer);
 
-	const pB = select("#pauseButton");
-	if (pB) pB.html("Pause");
-
-	currentBlock = time;
-	onColor = TimerColors[currentBlock.type];
-	remainingTime = currentBlock.duration;
-	//updateCanvas();
-	startTimer(interval);
-} //createTimer()
-
-function startTimer(interval) {
 	if (!interval || typeof interval != "number") interval = 1000;
-	startedAt = Date.now();
-	//updateCanvas()
+	
 	timer = setInterval(() => {
 		remainingTime--;
 		// remainingTime = Math.floor(Math.random()*100000);	
 
-		if (currentBlock.type == TimerTypes.WorkTimer) {
+		if (currentTimerBlock.type == TimerTypes.WorkTimer) {
 			timeWorked++;
 		}
 
-		if (remainingTime == 0) {
+		if (remainingTime === 0) {
 			if (!timerQueue.isEmpty) {
-				createTimer(timerQueue.shift());
+				loadTimerBlock(timerQueue.shift());
+				manager.start();
 			} else {
-				manager.state=States.Expired;
+				manager.expire();
 			}
 		}
 		updateCanvas();
@@ -340,16 +349,12 @@ function startTimer(interval) {
 	updateCanvas();
 } //startTimer()
 
-function clearTimer() {
-	manager.state=States.NotStarted;
-
-} //clearTimer()
-
 function keyPressed() {
 	let inputTime = 0;
 	if (keyCode >= 49 && keyCode <= 57) {
 		inputTime = keyCode - 48;
-		createTimer(inputTime);
+		loadTimerBlock(inputTime);
+		startTimer();
 	}
 	/*if (keyCode == 32) {
 		//(inclusive,exclusive)
@@ -360,31 +365,30 @@ function keyPressed() {
 } //keyPressed()
 
 function Pomodoro() {
-	timerQueue.queue(new TimerBlock(5 * 5 * 60, "Work"));
-	timerQueue.queue(new TimerBlock(1 * 5 * 60, "Break"));
+	timerQueue.queue(new TimerBlock(5 * 5 * 60, TimerTypes.WorkTimer));
+	timerQueue.queue(new TimerBlock(1 * 5 * 60, TimerTypes.BreakTimer));
 
-	timerQueue.queue(new TimerBlock(5 * 5 * 60, "Work"));
-	timerQueue.queue(new TimerBlock(1 * 5 * 60, "Break"));
+	timerQueue.queue(new TimerBlock(5 * 5 * 60, TimerTypes.WorkTimer));
+	timerQueue.queue(new TimerBlock(1 * 5 * 60, TimerTypes.BreakTimer));
 
-	timerQueue.queue(new TimerBlock(5 * 5 * 60, "Work"));
-	timerQueue.queue(new TimerBlock(1 * 5 * 60, "Break"));
+	timerQueue.queue(new TimerBlock(5 * 5 * 60, TimerTypes.WorkTimer));
+	timerQueue.queue(new TimerBlock(1 * 5 * 60, TimerTypes.BreakTimer));
 
-	timerQueue.queue(new TimerBlock(5 * 5 * 60, "Work"));
-	timerQueue.queue(new TimerBlock(1 * 5 * 60, "Break"));
+	timerQueue.queue(new TimerBlock(5 * 5 * 60, TimerTypes.WorkTimer));
+	timerQueue.queue(new TimerBlock(1 * 5 * 60, TimerTypes.BreakTimer));
 
-	timerQueue.queue(new TimerBlock(6 * 5 * 60, "Break"));
+	timerQueue.queue(new TimerBlock(6 * 5 * 60, TimerTypes.BreakTimer));
 }
 
 function drawButtons() {
-	let inputTime = 0;
+
 	const buttonA = createButton("Clear").id("clearButton");
 	buttonA.position(330, 175);
 	buttonA.mousePressed(() => {
-		clearTimer();
+		manager.state=States.NotStarted;
 	});
 
-	const buttonB = createButton("Pause");
-	buttonB.id("pauseButton");
+	const buttonB = createButton("Pause").id("pauseButton");
 	buttonB.position(330, 198);
 	buttonB.mousePressed(() => {
 		manager.pause();
@@ -393,26 +397,31 @@ function drawButtons() {
 	const buttonC = createButton("Restart");
 	buttonC.position(330, 221);
 	buttonC.mousePressed(() => {
-		restartTimer();
+		if(currentTimerBlock){
+			timerQueue.queueFront(currentTimerBlock)
+			currentTimerBlock = null;
+			manager.start()
+		}
 	});
 
 	const buttonD = createButton("Start");
 	buttonD.position(410, 175);
 	buttonD.mousePressed(() => {
-		manager.state = States.Running;
+		manager.start();
 	});
 
 	const buttonE = createButton("Skip Current");
 	buttonE.position(410, 198);
 	buttonE.mousePressed(() => {
-		if (currentBlock && !timerQueue.isEmpty) {
-			createTimer();
-		}
-		//TODO: remove workStatus check when color bug in expired() is fixed for real
-		else if (
-			timerQueue.isEmpty && manager.state != Status.NotStarted
-		) {
-			manager.state = States.Expired;
+		//nothing to skip if !currentBlock
+		if (currentTimerBlock) {
+			if(timerQueue.isEmpty){
+				manager.expire();
+			}
+			else{
+				currentTimerBlock = null;
+				manager.start();
+			}
 		}
 	});
 
@@ -425,82 +434,140 @@ function drawButtons() {
 	const button1 = createButton("4 hours");
 	button1.position(10, 175);
 	button1.mousePressed(() => {
-		inputTime = 4 * 60 * 60;
-		createTimer(inputTime);
+		const inputTime = 4 * 60 * 60;
+		loadTimerBlock(inputTime);
+		manager.start();
 	});
+
 	const button2 = createButton("3 hours");
 	button2.position(10, 198);
 	button2.mousePressed(() => {
-		inputTime = 3 * 60 * 60;
-		createTimer(inputTime);
+		const inputTime = 3 * 60 * 60;
+		loadTimerBlock(inputTime);
+		manager.start();
 	});
+
 	const button3 = createButton("2 hours");
 	button3.position(10, 221);
 	button3.mousePressed(() => {
-		inputTime = 2 * 60 * 60;
-		createTimer(inputTime);
+		const inputTime = 2 * 60 * 60;
+		loadTimerBlock(inputTime);
+		manager.start();
 	});
+
 	const button4 = createButton("1 hours");
 	button4.position(10, 244);
 	button4.mousePressed(() => {
-		inputTime = 1 * 60 * 60;
-		createTimer(inputTime);
+		const inputTime = 1 * 60 * 60;
+		loadTimerBlock(inputTime);
+		manager.start();
 	});
 
 	const button5 = createButton("45 min");
 	button5.position(90, 175);
 	button5.mousePressed(() => {
-		inputTime = 45 * 60;
-		createTimer(inputTime);
+		const inputTime = 45 * 60;
+		loadTimerBlock(inputTime);
+		manager.start();
 	});
+
 	const button6 = createButton("30 min");
 	button6.position(90, 198);
 	button6.mousePressed(() => {
-		inputTime = 30 * 60;
-		createTimer(inputTime);
+		const inputTime = 30 * 60;
+		loadTimerBlock(inputTime);
+		manager.start();
 	});
+
 	const button7 = createButton("15 min");
 	button7.position(90, 221);
 	button7.mousePressed(() => {
-		inputTime = 15 * 60;
-		createTimer(inputTime);
+		const inputTime = 15 * 60;
+		loadTimerBlock(inputTime);
+		manager.start();
 	});
 
 	const button8 = createButton("10 min");
-	button8.position(170, 175);
+	button8.position(90, 244);
 	button8.mousePressed(() => {
-		inputTime = 10 * 60;
-		createTimer(inputTime);
+		const inputTime = 10 * 60;
+		loadTimerBlock(inputTime);
+		manager.start();
 	});
+
 	const button9 = createButton("&nbsp;&nbsp;5 min");
-	button9.position(170, 198);
+	button9.position(170, 175);
 	button9.mousePressed(() => {
-		inputTime = 5 * 60;
-		createTimer(inputTime);
+		const inputTime = 5 * 60;
+		loadTimerBlock(inputTime);
+		manager.start();
 	});
+
 	const button10 = createButton("&nbsp;&nbsp;1 min");
-	button10.position(170, 221);
+	button10.position(170, 198);
 	button10.mousePressed(() => {
-		inputTime = 60;
-		createTimer(inputTime);
+		const inputTime = 60;
+		loadTimerBlock(inputTime);
+		manager.start();
+	});
+
+	const buttonAdd1 = createButton("&nbsp;+5 min");
+	buttonAdd1.position(170, 221);
+	buttonAdd1.mousePressed(() => {
+		let inputTime = 60 * 5
+		const rem = remainingTime + inputTime
+		if(currentTimerBlock){
+			inputTime = new TimerBlock(currentTimerBlock.duration + inputTime,currentTimerBlock.type)
+		}
+		loadTimerBlock(inputTime)
+		remainingTime = rem
+		updateCanvas();
+		manager.state = States.Running
+	});
+
+	const buttonAdd2 = createButton("&nbsp;+1 min");
+	buttonAdd2.position(170, 244);
+	buttonAdd2.mousePressed(() => {
+		let inputTime = 60
+		const rem = remainingTime + inputTime
+		if(currentTimerBlock){
+			inputTime = new TimerBlock(currentTimerBlock.duration + inputTime,currentTimerBlock.type)
+		}
+		loadTimerBlock(inputTime)
+		remainingTime = rem
+		updateCanvas();
+		manager.state = States.Running;
 	});
 
 	const button11 = createButton("45 sec");
 	button11.position(250, 175);
 	button11.mousePressed(() => {
-		inputTime = 45;
-		createTimer(inputTime);
+		const inputTime = 45;
+		loadTimerBlock(inputTime);
+		manager.start();
 	});
+
 	const button12 = createButton("30 sec");
 	button12.position(250, 198);
 	button12.mousePressed(() => {
-		inputTime = 30;
-		createTimer(inputTime);
+		const inputTime = 30;
+		loadTimerBlock(inputTime);
+		manager.start();
 	});
+
 	const button13 = createButton("15 sec");
 	button13.position(250, 221);
 	button13.mousePressed(() => {
-		inputTime = 15;
-		createTimer(inputTime);
+		const inputTime = 15;
+		loadTimerBlock(inputTime);
+		manager.start();
+	});
+
+	const button14 = createButton("2 sec");
+	button14.position(250, 244);
+	button14.mousePressed(() => {
+		const inputTime = 2;
+		loadTimerBlock(inputTime);
+		manager.start();
 	});
 }

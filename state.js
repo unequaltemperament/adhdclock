@@ -22,11 +22,16 @@ class stateManager {
 
 	set state(st) {
 		if (!(this._state instanceof st)) {
+			if(this._state){
+				this.exit();
+			}
+
 			this._state = new st(this);
 			console.debug(`stateManager: Entering ${this.state}State`);
 			this.enter();
 			updateCanvas(this);
 		}
+
 		else{
 			console.warn(`Already in ${this._state}State`);
 		}
@@ -38,8 +43,13 @@ class stateManager {
 	get state(){return this._state.status;}
 
 	enter= function(){this._state.enter();};
+	exit= function(){this._state.exit();}
 	start= function(){this._state.start();};
 	pause= function(){this._state.pause();};
+	//TODO: implement skip() and expire() properly;
+	skip= function(){this._state.skip();};
+	expire= function(){this._state.expire();};
+
 
 }
 
@@ -60,6 +70,7 @@ class BaseState{
 	toString() {return this.constructor.toString();}
 
 	enter (){ console.debug(`BaseState enter`);}
+	exit  (){ console.debug(`BaseState exit`);}
 	start (){ console.debug("BaseState start");}
 	pause (){ console.debug("BaseState pause");}
 	skip  (){ console.debug("BaseState skip");}
@@ -72,11 +83,11 @@ class NotStartedState extends BaseState {
     
 	enter(){
 		remainingTime = 0;
-		currentBlock = null;
+		currentTimerBlock = null;
 		select("#pauseButton").html("Pause");
 		if (timer) clearInterval(timer);
 		if (expiredTimer) clearInterval(expiredTimer);
-		onColor = TimerColors.Work;
+		onColor = this.color;
 	}
 	start(){ this.context.state=States.Running;}
 }
@@ -84,31 +95,58 @@ class NotStartedState extends BaseState {
 class RunningState extends BaseState {
 	constructor(ctx){
 		super(ctx);
-		this.color = currentBlock ? TimerColors[currentBlock.type] : TimerColors.Work;
+		this.color = currentTimerBlock ? TimerColors[currentTimerBlock.type] : TimerColors.Work;
+		onColor = this.color
 	}
 	
 	static timerStatus = Status.Running;
+	
+	enter(){
+		this.start();
+	}
 
-	start(){createTimer();color = TimerColors[currentBlock.type];}
-	enter(){this.context.start();}
-/* 	pause(){
-		timerStatus = Status.Paused;
-		select("#pauseButton").html("Resume");
-		clearInterval(timer);
-	} */
+	start(){
+		if (!currentTimerBlock) {
+			loadTimerBlock();
+		}		
+
+		this.color = TimerColors[currentTimerBlock.type];
+		onColor = this.color;
+
+		startTimer();
+		
+	}
+	
+ 	pause(){
+		this.context.state = States.Paused
+	}
+	
+	expire(){
+		this.context.state=States.Expired
+	}
 }
 
 class PausedState extends BaseState {
-	constructor(ctx){
-		super(ctx);
-		this.color = currentBlock ? TimerColors[currentBlock.type] : TimerColors.Work;
-	}
 
 	static timerStatus = Status.Paused;
-	/* start(){
+
+	enter(){
+		clearInterval(timer);
+		select("#pauseButton").html("Resume");
+	}
+
+	exit(){
 		select("#pauseButton").html("Pause");
-	    startTimer();
-	} */
+	}
+
+	start(){
+	    this.context.state = States.Running
+	}
+
+	//TODO: lol
+	pause(){
+		this.start()
+	}
 
 }
 
@@ -121,28 +159,21 @@ class ExpiredState extends BaseState {
 		clearInterval(timer);
 		clearInterval(expiredTimer);
 		remainingTime = 0;
-		currentBlock = null;
-		//TODO: sniff through this
+		currentTimerBlock = null;
+
 		let toggleBackToColor = onColor;
-		onColor = TimerColors.Expired;
+		onColor = this.color;
 		expiredTimer = setInterval(() => {
 			onColor == toggleBackToColor
-				? (onColor = TimerColors.Expired)
+				? (onColor = this.color)
 				: (onColor = toggleBackToColor);
 			updateCanvas();
 		}, 420);
 	}
 
-}
-
-////////////////////////////////////
-function restartTimer() {
-	select("#pauseButton").html("Pause");
-	if (currentBlock) {
-		if (timer) clearInterval(timer);
-		if (expiredTimer) clearInterval(expiredTimer);
-		createTimer(currentBlock);
+	start(){
+		this.context.state = States.Running
 	}
-	updateCanvas();
-} //restartTimer() */
-////////////////////////////////////
+
+	pause(){}
+}
