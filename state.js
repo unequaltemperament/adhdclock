@@ -9,15 +9,15 @@ class Status {
 
 class stateManager {
 	constructor(st){
-		if(st){
-			console.debug(`Initializing new stateManager with ${st}`);
-			this.state = st;
+		if(!st){
+			console.debug(`stateManager: No state passed in, defaulting to NotStartedState`)
+			st = States.NotStarted
 		}
-		else{
-			console.debug(`No state passed in, initializing stateManager with NotStartedState`);
-			this.state= States.NotStarted;
-		}
+		console.debug(`stateManager: Initializing new stateManager with ${st}State`);
+		this.state = st;
+		
 	}
+
 	_state;
 
 	tickedAt;
@@ -76,13 +76,15 @@ class BaseState{
 	get [Symbol.toStringTag](){return this.constructor[Symbol.toStringTag];}
 	toString() {return this.constructor.toString();}
 
-	enter (){ console.debug(`BaseState enter`);}
-	exit  (){ console.debug(`BaseState exit`);}
-	start (){ console.debug("BaseState start");}
-	pause (){ console.debug("BaseState pause");}
-	skip  (){ console.debug("BaseState skip");}
-	expire(){ console.debug("BaseState expire");}
+	enter (){ console.debug(`enter() not implemented for ${this.status}State`);}
+	exit  (){ console.debug(`exit() not implemented for ${this.status}State`);}
+	start (){ this.context.state=States.Running;}
+	pause (){ console.debug(`pause() not implemented for ${this.status}State`);}
+	skip  (){ console.debug(`skip() not implemented for ${this.status}State`);}
+	expire(){ console.debug(`expire() not implemented for ${this.status}State`);}
 }
+
+
 
 class NotStartedState extends BaseState {
 	static timerStatus = Status.NotStarted;
@@ -98,8 +100,6 @@ class NotStartedState extends BaseState {
 		expiredTimer = null;
 		onColor = this.color;
 	}
-
-	start(){ this.context.state=States.Running;}
 }
 
 class RunningState extends BaseState {
@@ -155,10 +155,6 @@ class PausedState extends BaseState {
 		select("#pauseButton").html("Pause");
 	}
 
-	start(){
-	    this.context.state = States.Running
-	}
-
 	//TODO: lol
 	pause(){
 		this.start()
@@ -188,10 +184,4 @@ class ExpiredState extends BaseState {
 			updateCanvas();
 		}, 420);
 	}
-
-	start(){
-		this.context.state = States.Running
-	}
-
-	pause(){}
 }

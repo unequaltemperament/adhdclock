@@ -122,11 +122,8 @@ window.setup=function() {
 
 	drawButtons();
 
-	manager = new stateManager(States.NotStarted);
-	//manager.enter();
-	//updateCanvas();
-	//manager.start();
-	//createTimer();
+	manager = new stateManager();
+
 } //setup()
 
 window.draw=function() {
@@ -167,73 +164,6 @@ function drawProgressBar(){
 		pop();
 	}
 } 
-
-function updateStatusText(x) {
-	//x is only passed for NotStartedState.enter()'s startup
-	//to access manager status during canvas initialization
-	//TODO: save all canvas updates until all state is initialized
-	//or enter state after manager and canvas are both initialized
-	if(!x) x=manager;
-	const workStatusTextLocation = numSegments * boxWidth + 10;
-	let workStatusTextLineNumber = 1;
-	pg.fill(50);
-	pg.rect(workStatusTextLocation, 0, pg.width - workStatusTextLocation, pg.height);
-	pg.fill(255);
-	pg.text(x.state, workStatusTextLocation, pg.textSize() * workStatusTextLineNumber++);
-	pg.text(
-		`Total time worked: ${timeWorked}`,
-		workStatusTextLocation,
-		pg.textSize() * workStatusTextLineNumber++,
-	);
-
-	const cbText = currentTimerBlock
-		? `${currentTimerBlock.type} for ${currentTimerBlock.duration}`
-		: ``;
-		
-	pg.text(
-		`Current block: ${cbText}`,
-		workStatusTextLocation, pg.textSize() * workStatusTextLineNumber++,
-	);
-
-	pg.text(
-		`${timerQueue.length} queued block${timerQueue.length != 1 ? "s" : ""}`,
-		workStatusTextLocation, pg.textSize() * workStatusTextLineNumber++,
-	);
-
-	pg.text(`${timerQueue.duration} total time`,
-		workStatusTextLocation, pg.textSize() * workStatusTextLineNumber++
-	);
-
-	for (let i = 0; i < timerQueue.length; i++) {
-		pg.fill(TimerColors[timerQueue[i].type]);
-		pg.text(
-			timerQueue[i].duration,
-			workStatusTextLocation, pg.textSize() * workStatusTextLineNumber++,
-		);
-	}
-} //updateStatustext()
-
-function updateTimerDisplay() {
-	const digits = remainingTime.toString().padStart(numSegments, "0");
-
-	pg.fill(30);
-	pg.push();
-		
-	//R-to-L
-	for (let i = numSegments - 1; i >= 0; i--) {
-		pg.push();
-		pg.translate(i * boxWidth, 0);
-		drawSevenSegment(digits[i]);
-		pg.pop();
-	}
-	pg.pop();
-} //updateTimerDisplay()
-
-function updateCanvas(x) {
- 	updateStatusText(x);
-	updateTimerDisplay(); 
-	
-} //updateCanvas()
 
 //TODO: find settings that give the "burny edge" effect and aren't zoom-dependent
 function drawSegment(segment, lit) {
@@ -297,6 +227,74 @@ function drawSevenSegment(numeralToDraw) {
 	pg.pop();
 } //drawSevenSegment()
 
+function updateTimerDisplay() {
+	const digits = remainingTime.toString().padStart(numSegments, "0");
+
+	pg.fill(30);
+	pg.push();
+		
+	//R-to-L
+	for (let i = numSegments - 1; i >= 0; i--) {
+		pg.push();
+		pg.translate(i * boxWidth, 0);
+		drawSevenSegment(digits[i]);
+		pg.pop();
+	}
+	pg.pop();
+} //updateTimerDisplay()
+
+function updateStatusText(x) {
+	//x is only passed for NotStartedState.enter()'s startup
+	//to access manager status during canvas initialization
+	//TODO: save all canvas updates until all state is initialized
+	//or enter state after manager and canvas are both initialized
+	
+	if(!x) {x=manager}
+	
+	const workStatusTextLocation = numSegments * boxWidth + 10;
+	let workStatusTextLineNumber = 1;
+	pg.fill(50);
+	pg.rect(workStatusTextLocation, 0, pg.width - workStatusTextLocation, pg.height);
+	pg.fill(255);
+	pg.text(x.state, workStatusTextLocation, pg.textSize() * workStatusTextLineNumber++);
+	pg.text(
+		`Total time worked: ${timeWorked}`,
+		workStatusTextLocation,
+		pg.textSize() * workStatusTextLineNumber++,
+	);
+
+	const cbText = currentTimerBlock
+		? `${currentTimerBlock.type} for ${currentTimerBlock.duration}`
+		: ``;
+		
+	pg.text(
+		`Current block: ${cbText}`,
+		workStatusTextLocation, pg.textSize() * workStatusTextLineNumber++,
+	);
+
+	pg.text(
+		`${timerQueue.length} queued block${timerQueue.length != 1 ? "s" : ""}`,
+		workStatusTextLocation, pg.textSize() * workStatusTextLineNumber++,
+	);
+
+	pg.text(`${timerQueue.duration} total time`,
+		workStatusTextLocation, pg.textSize() * workStatusTextLineNumber++
+	);
+
+	for (let i = 0; i < timerQueue.length; i++) {
+		pg.fill(TimerColors[timerQueue[i].type]);
+		pg.text(
+			timerQueue[i].duration,
+			workStatusTextLocation, pg.textSize() * workStatusTextLineNumber++,
+		);
+	}
+} //updateStatusText()
+
+function updateCanvas(x) {
+ 	updateStatusText(x);
+	updateTimerDisplay();
+} //updateCanvas()
+
 
 function loadTimerBlock(time) {
 	
@@ -317,7 +315,6 @@ function loadTimerBlock(time) {
 	}
 	currentTimerBlock = time;
 	remainingTime = currentTimerBlock.duration;
-
 	updateCanvas();
 } //loadTimerBlock()
 
@@ -342,15 +339,14 @@ function tickTimer(){
 }
 
 function startTimer(partialInterval) {
-
 	if (timer) clearInterval(timer);
-	if (expiredTimer) clearInterval(expiredTimer);
-
 	timer = null;
+
+	if (expiredTimer) clearInterval(expiredTimer);
 	expiredTimer = null;
 
 	manager.tickedAt = Date.now();
-
+	if(partialInterval)console.assert(partialInterval <= 1000)
 	if (typeof partialInterval === "number" && partialInterval > 0) {
 		timer = setTimeout( () => {
 			tickTimer();
@@ -376,12 +372,15 @@ function keyPressed() {
 		loadTimerBlock(inputTime);
 		startTimer();
 	}
-	/*if (keyCode == 32) {
-		//(inclusive,exclusive)
-		inputTime = floor(random(1000, 100000));
-		createTimer(inputTime);
-		return false;
-	}*/
+	if (keyCode ==192){
+		if (isLooping() === true) {
+			noLoop(); 
+		  } else {
+			loop(); 
+		  }
+		//paused pause is resume
+		manager.pause();
+	}
 } //keyPressed()
 
 function Pomodoro() {
