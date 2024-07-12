@@ -316,36 +316,56 @@ function loadTimerBlock(time) {
 		return false;
 	}
 	currentTimerBlock = time;
-	//TODO: move to startTimer?
 	remainingTime = currentTimerBlock.duration;
-	updateCanvas();
-} //createTimer()
 
-function startTimer(interval) {
+	updateCanvas();
+} //loadTimerBlock()
+
+function tickTimer(){
+
+	remainingTime--;
+	manager.tickedAt = Date.now(); 	
+
+	if (currentTimerBlock.type == TimerTypes.WorkTimer) {
+		timeWorked++;
+	}
+
+	if (remainingTime === 0) {
+		if (!timerQueue.isEmpty) {
+			loadTimerBlock(timerQueue.shift());
+			manager.start();
+		} else {
+			manager.expire();
+		}
+	}
+	updateCanvas();
+}
+
+function startTimer(partialInterval) {
 
 	if (timer) clearInterval(timer);
 	if (expiredTimer) clearInterval(expiredTimer);
 
-	if (!interval || typeof interval != "number") interval = 1000;
+	timer = null;
+	expiredTimer = null;
+
+	manager.tickedAt = Date.now();
+
+	if (typeof partialInterval === "number" && partialInterval > 0) {
+		timer = setTimeout( () => {
+			tickTimer();
+			timer = setInterval(() => {
+				tickTimer();
+			}, 1000);}
+		, partialInterval)
+	}
+
+	else{
+		timer = setInterval(() => {
+			tickTimer();
+		}, 1000)
+	}
 	
-	timer = setInterval(() => {
-		remainingTime--;
-		// remainingTime = Math.floor(Math.random()*100000);	
-
-		if (currentTimerBlock.type == TimerTypes.WorkTimer) {
-			timeWorked++;
-		}
-
-		if (remainingTime === 0) {
-			if (!timerQueue.isEmpty) {
-				loadTimerBlock(timerQueue.shift());
-				manager.start();
-			} else {
-				manager.expire();
-			}
-		}
-		updateCanvas();
-	}, interval);
 	updateCanvas();
 } //startTimer()
 
@@ -413,7 +433,7 @@ function drawButtons() {
 	const buttonE = createButton("Skip Current");
 	buttonE.position(410, 198);
 	buttonE.mousePressed(() => {
-		//nothing to skip if !currentBlock
+		//nothing to skip if !currentTimerBlock
 		if (currentTimerBlock) {
 			if(timerQueue.isEmpty){
 				manager.expire();
@@ -430,6 +450,13 @@ function drawButtons() {
 	buttonF.mousePressed(() => {
 		Pomodoro();
 	});
+
+	const buttonG = createButton("Clear Queue");
+	buttonG.position(410, 244);
+	buttonG.mousePressed(() => {
+		timerQueue.length = 0;
+		updateCanvas();
+	})
 
 	const button1 = createButton("4 hours");
 	button1.position(10, 175);

@@ -20,6 +20,10 @@ class stateManager {
 	}
 	_state;
 
+	tickedAt;
+	elapsedInterval;
+	remainingInterval;
+
 	set state(st) {
 		if (!(this._state instanceof st)) {
 			if(this._state){
@@ -61,6 +65,9 @@ class BaseState{
 	color = TimerColors.Work;
 	static timerStatus = "Uninitialized";
 
+	static elapsedInterval = 0;
+	static remainingInterval = 0;
+
 	static get status(){return this.timerStatus;}
 	static get [Symbol.toStringTag](){return `${this.status}State`;}
 	static toString(){return this.status;}
@@ -86,9 +93,12 @@ class NotStartedState extends BaseState {
 		currentTimerBlock = null;
 		select("#pauseButton").html("Pause");
 		if (timer) clearInterval(timer);
+		timer = null;
 		if (expiredTimer) clearInterval(expiredTimer);
+		expiredTimer = null;
 		onColor = this.color;
 	}
+
 	start(){ this.context.state=States.Running;}
 }
 
@@ -108,13 +118,15 @@ class RunningState extends BaseState {
 	start(){
 		if (!currentTimerBlock) {
 			loadTimerBlock();
-		}		
+		}
 
 		this.color = TimerColors[currentTimerBlock.type];
 		onColor = this.color;
 
-		startTimer();
-		
+		if(!timer){
+		startTimer(this.context.remainingInterval);
+		this.context.remainingInterval = 0;
+		}
 	}
 	
  	pause(){
@@ -130,9 +142,13 @@ class PausedState extends BaseState {
 
 	static timerStatus = Status.Paused;
 
+
 	enter(){
 		clearInterval(timer);
+		timer = null;
 		select("#pauseButton").html("Resume");
+		this.context.elapsedInterval = Date.now() - this.context.tickedAt
+		this.context.remainingInterval = 1000 - this.context.elapsedInterval
 	}
 
 	exit(){
@@ -157,7 +173,9 @@ class ExpiredState extends BaseState {
 
 	enter(){
 		clearInterval(timer);
+		timer = null;
 		clearInterval(expiredTimer);
+		expiredTimer = null;
 		remainingTime = 0;
 		currentTimerBlock = null;
 
